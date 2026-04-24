@@ -1,0 +1,9 @@
+venv/
+checkpoints/
+data/
+outputs/
+__pycache__/
+*.pyc
+*.pth
+*.bin
+*.safetensors
