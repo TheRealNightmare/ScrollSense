@@ -1,0 +1,27 @@
+# --- Security & Credentials (CRITICAL) ---
+.env
+*.pem
+
+# --- Python / Backend ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.python-version
+
+# --- Chrome Extension Artifacts ---
+*.crx
+
+# --- OS & IDE Specific ---
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.log
+
+# --- Extras ---
+node_modules/
+dist/
+.svelte-kit/
