@@ -10,6 +10,7 @@ __pycache__/
 venv/
 ENV/
 .python-version
+.env
 
 # --- Chrome Extension Artifacts ---
 *.crx
