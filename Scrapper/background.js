@@ -1,8 +1,8 @@
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "INGEST_DATA") {
     
-    // The secure bridge to your Python server
-    fetch('http://127.0.0.1:8000/ingest', {
+    // Bridge to the server
+    fetch('https://scrollsense.onrender.com/ingest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       
