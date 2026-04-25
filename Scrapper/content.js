@@ -1,62 +1,88 @@
 /**
  * ScrollSense - Content Script
- * Approach: Passive Observation (High Safety)
+ * Features: Groups paragraphs, ignores Messenger/Popups, waits for "See more", prevents DevTools crashes.
  */
 
-// We use a Map to store the length of the longest version of a post we've sent.
-// Key: A snippet of the first 50 chars (Unique ID). Value: Length of the text.
+// 1. THE DEBUG TOGGLE
+// Set this to false when you aren't actively developing to save your RAM
+const DEBUG_MODE = true; 
+
+// Custom logger that only prints when debugging
+const log = (message, style = "", data = "") => {
+  if (DEBUG_MODE) {
+    console.log(message, style, data);
+  }
+};
+
 const processedPosts = new Map();
 
 const scrollSenseExtractor = () => {
-  // Facebook's post text usually lives in divs with dir="auto"
-  const postElements = document.querySelectorAll('div[dir="auto"]');
+  // 2. URL GUARD
+  // If the user navigates directly to the messages page, stop executing
+  if (window.location.pathname.startsWith('/messages')) return; 
 
-  postElements.forEach((el) => {
-    const fullText = el.innerText.trim();
+  // 3. MAIN FEED FILTER
+  // Target only the main timeline column to completely ignore chat popups
+  const mainFeedArea = document.querySelector('div[role="main"]');
+  if (!mainFeedArea) return;
+
+  // Target ENTIRE POST containers inside the main feed only
+  const postContainers = mainFeedArea.querySelectorAll('div[role="article"]');
+
+  postContainers.forEach((postContainer) => {
+    // 4. PARAGRAPH STITCHING
+    // Find all text blocks inside this specific post
+    const textElements = postContainer.querySelectorAll('div[dir="auto"]');
     
-    // Ignore short UI elements like "Like", "Share", or timestamps
+    // Extract text and glue paragraphs together with new lines
+    let fullText = Array.from(textElements)
+      .map(el => el.innerText.trim())
+      .filter(text => text.length > 0)
+      .join('\n');
+    
+    // Ignore short UI elements
     if (fullText.length < 45) return;
 
-    // Create a unique key (ID) for this post based on the start of the text
+    // 5. TRUNCATION GUARD
+    // If the post isn't fully expanded, ignore it and wait for the user to click "See more"
+    const isTruncated = fullText.includes("… See more") || fullText.includes("... See more") || fullText.endsWith("…");
+    if (isTruncated) return; 
+
+    // Create the Unique ID (Fingerprint) from the first 50 chars of the combined text
     const postKey = fullText.substring(0, 50);
     const existingLength = processedPosts.get(postKey) || 0;
 
     /**
-     * UPSERT FRONTEND LOGIC: 
-     * 1. If we've never seen this post (length 0), send it.
-     * 2. If we HAVE seen it, but now the text is LONGER (e.g., user manually clicked 'See More'),
-     * send it again to update the backend database with the full version.
+     * UPSERT LOGIC
      */
     if (fullText.length > existingLength) {
       processedPosts.set(postKey, fullText.length);
 
-      console.log(`%c[ScrollSense] ${existingLength === 0 ? 'New Post' : 'Expanded Post'}:`, 
-                  'color: #00ff00; font-weight: bold;', 
-                  fullText.substring(0, 60) + "...");
+      log("%c[ScrollSense] Full Post Captured:", 'color: #00ff00; font-weight: bold;', fullText.substring(0, 60) + "...");
 
-      // Send the payload (ID + Text) to background.js
-      chrome.runtime.sendMessage({
-        action: "INGEST_DATA",
-        payload: {
-          id: postKey,
-          text: fullText
-        }
-      });
+      // 6. CONTEXT GUARD
+      // Check if the extension context is still valid before sending to prevent crash errors
+      if (chrome.runtime?.id) {
+        chrome.runtime.sendMessage({
+          action: "INGEST_DATA",
+          payload: {
+            id: postKey,
+            text: fullText
+          }
+        });
+      }
     }
   });
 };
 
 // MutationObserver: Watch for Facebook's infinite scroll / DOM changes
 const observer = new MutationObserver(() => {
-  // Debounce: Wait 1.5 seconds after the user stops scrolling to scan
+  // Debounce: Wait 1.5 seconds after the user stops scrolling before scanning
   clearTimeout(window.scrollSenseTimer);
   window.scrollSenseTimer = setTimeout(scrollSenseExtractor, 1500);
 });
 
 // Start observing the page
-observer.observe(document.body, {
-  childList: true,
-  subtree: true
-});
+observer.observe(document.body, { childList: true, subtree: true });
 
-console.log("%c[ScrollSense] Active & Watching Newsfeed Safely...", "color: #3b5998; font-size: 14px; font-weight: bold;");
+log("%c[ScrollSense] Active & Watching Main Newsfeed...", "color: #3b5998; font-weight: bold;");
