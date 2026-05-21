@@ -1,6 +1,6 @@
 import React from 'react';
 
-const Dashboard = () => {
+const Dashboard = ({ onNavigateToReports, onNavigateToSettings }) => {
   // Mock recent data tracking matching the interface capture
   const feeds = [
     { text: "Finally hit my running goal — 100 km this month. Knees are toast, heart is full.", cat: "PERSONAL", conf: "96% confidence", time: "2 min ago", type: "pos" },
@@ -16,8 +16,24 @@ const Dashboard = () => {
           <span className="brand-text" style={{ fontSize: '14px' }}>▲ Scroll Sense</span>
           <div className="nav-links">
             <a href="#dash" className="nav-item active">Dashboard</a>
-            <a href="#rep" className="nav-item">Reports</a>
-            <a href="#set" className="nav-item">Settings</a>
+            
+            {/* Connected to route to the Reports page */}
+            <a 
+              href="#rep" 
+              className="nav-item" 
+              onClick={(e) => { e.preventDefault(); onNavigateToReports(); }}
+            >
+              Reports
+            </a>
+            
+            {/* Connected to route to Settings */}
+            <a 
+              href="#set" 
+              className="nav-item"
+              onClick={(e) => { e.preventDefault(); onNavigateToSettings(); }}
+            >
+              Settings
+            </a>
           </div>
         </div>
         <div className="nav-profile">
