@@ -8,12 +8,13 @@ from dotenv import dotenv_values
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# Pre-flight: credentials
+# Point explicitly to the root .venv Python executable
+ROOT_PYTHON = os.path.abspath(os.path.join(HERE, "..", ".venv", "Scripts", "python.exe"))
+
 env = dotenv_values(os.path.join(HERE, ".env"))
 if not env.get("SUPABASE_URL") or not env.get("SUPABASE_KEY"):
     sys.exit("[start.py] ERROR: .env is missing SUPABASE_URL or SUPABASE_KEY.")
 
-# Pre-flight: ports
 def port_is_free(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(0.5)
@@ -42,24 +43,21 @@ signal.signal(signal.SIGINT, shutdown)
 if hasattr(signal, "SIGTERM"):
     signal.signal(signal.SIGTERM, shutdown)
 
-# Launch FastAPI
 processes.append(subprocess.Popen(
-    [sys.executable, "-m", "uvicorn", "main:app",
+    [ROOT_PYTHON, "-m", "uvicorn", "main:app",
      "--host", "127.0.0.1", "--port", "8000", "--app-dir", HERE],
     cwd=HERE,
 ))
 print("[start.py] FastAPI  → http://127.0.0.1:8000")
 
-# Launch Streamlit Labeler
 processes.append(subprocess.Popen(
-    [sys.executable, "-m", "streamlit", "run", os.path.join(HERE, "labeler.py"),
+    [ROOT_PYTHON, "-m", "streamlit", "run", os.path.join(HERE, "labeler.py"),
      "--server.port", "8501", "--server.headless", "true"],
     cwd=HERE,
 ))
 print("[start.py] Labeler  → http://localhost:8501")
 print("[start.py] Press Ctrl+C to stop both servers.")
 
-# Watchdog: if either child dies unexpectedly, shut everything down
 while True:
     for p in processes:
         if p.poll() is not None:
