@@ -30,15 +30,23 @@ const scrollSenseExtractor = () => {
   const postContainers = mainFeedArea.querySelectorAll('div[role="article"]');
 
   postContainers.forEach((postContainer) => {
-    // 4. PARAGRAPH STITCHING
+// 4. PARAGRAPH STITCHING
     // Find all text blocks inside this specific post
     const textElements = postContainer.querySelectorAll('div[dir="auto"]');
     
-    // Extract text and glue paragraphs together with new lines
-    let fullText = Array.from(textElements)
-      .map(el => el.innerText.trim())
-      .filter(text => text.length > 0)
-      .join('\n');
+    let paragraphs = [];
+    textElements.forEach(el => {
+      // THE FIX: If this div contains another div[dir="auto"], skip it. 
+      // This ensures we only grab the deepest inner text and avoid parent duplicates.
+      if (!el.querySelector('div[dir="auto"]')) {
+        let text = el.innerText.trim();
+        if (text.length > 0) paragraphs.push(text);
+      }
+    });
+    
+    // Bonus Fix: Remove any exact duplicate lines just in case FB rendered it twice
+    let uniqueParagraphs = [...new Set(paragraphs)];
+    let fullText = uniqueParagraphs.join('\n');
     
     // Ignore short UI elements
     if (fullText.length < 45) return;
@@ -77,12 +85,25 @@ const scrollSenseExtractor = () => {
 
 // MutationObserver: Watch for Facebook's infinite scroll / DOM changes
 const observer = new MutationObserver(() => {
-  chrome.storage.local.get(['supabaseToken', 'scrapingEnabled'], function(result) {
-    if (!result.supabaseToken || !result.scrapingEnabled) return; 
-
-    clearTimeout(window.scrollSenseTimer);
-    window.scrollSenseTimer = setTimeout(scrollSenseExtractor, 1500);
-  });
+  // 1. Debounce FIRST. Reset the timer every time a tiny change happens.
+  clearTimeout(window.scrollSenseTimer);
+  
+  // 2. Wait 1.5 seconds after the user completely stops scrolling
+  window.scrollSenseTimer = setTimeout(() => {
+    
+    // 3. ONLY check storage once the scrolling has stopped
+    chrome.storage.local.get(['supabaseToken', 'scrapingEnabled'], function(result) {
+      // If logged out or switched off, abort.
+      if (!result.supabaseToken || !result.scrapingEnabled) {
+        log("Scraping is paused or user is logged out.");
+        return; 
+      }
+      
+      // If we are good to go, run the heavy extractor function
+      scrollSenseExtractor();
+    });
+    
+  }, 1500);
 });
 
 observer.observe(document.body, { childList: true, subtree: true });
