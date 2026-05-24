@@ -77,12 +77,13 @@ const scrollSenseExtractor = () => {
 
 // MutationObserver: Watch for Facebook's infinite scroll / DOM changes
 const observer = new MutationObserver(() => {
-  // Debounce: Wait 1.5 seconds after the user stops scrolling before scanning
-  clearTimeout(window.scrollSenseTimer);
-  window.scrollSenseTimer = setTimeout(scrollSenseExtractor, 1500);
+  chrome.storage.local.get(['supabaseToken', 'scrapingEnabled'], function(result) {
+    if (!result.supabaseToken || !result.scrapingEnabled) return; 
+
+    clearTimeout(window.scrollSenseTimer);
+    window.scrollSenseTimer = setTimeout(scrollSenseExtractor, 1500);
+  });
 });
 
-// Start observing the page
 observer.observe(document.body, { childList: true, subtree: true });
-
 log("%c[ScrollSense] Active & Watching Main Newsfeed...", "color: #3b5998; font-weight: bold;");
