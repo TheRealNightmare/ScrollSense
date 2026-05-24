@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; width: 320px; padding: 20px; margin: 0; background-color: #f0f2f5; color: #1c1e21; }
+    h2 { margin-top: 0; color: #1877f2; text-align: center; }
+    .hidden { display: none !important; }
+    input[type="email"], input[type="password"] { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+    button { width: 100%; background-color: #1877f2; color: white; padding: 10px 20px; margin: 8px 0; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+    button.danger { background-color: #e41e3f; }
+    .toggle-container { display: flex; justify-content: space-between; align-items: center; background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+    .status-badge { padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; color: white; background: #dc3545; }
+    .status-badge.active { background: #28a745; }
+    #error-msg { color: #e41e3f; font-size: 12px; text-align: center; margin-top: 5px; }
+    .link-btn { background: none; color: #1877f2; font-size: 13px; padding: 5px; cursor: pointer; text-decoration: underline; border: none;}
+    /* The switch - the box around the slider */
+.switch { position: relative; display: inline-block; width: 50px; height: 24px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+
+/* The slider */
+.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+.slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+
+/* Animation when ON */
+input:checked + .slider { background-color: #28a745; }
+input:checked + .slider:before { transform: translateX(26px); }
+  </style>
+</head>
+<body>
+  <h2>ScrollSense</h2>
+  <div id="auth-view">
+    <p id="auth-subtitle" style="font-size: 13px; text-align: center;">Login to start analyzing your feed.</p>
+    <input type="email" id="email" placeholder="Email Address" required>
+    <input type="password" id="password" placeholder="Password" required>
+    <button id="submit-btn">Sign In</button>
+    <button id="switch-mode-btn" class="link-btn">Don't have an account? Sign Up</button>
+    <div id="error-msg"></div>
+  </div>
+<div id="dashboard-view" class="hidden">
+    
+    <p id="user-email-display" style="font-size: 12px; color: #606770; text-align: center; margin-bottom: 15px; font-weight: bold;"></p>
+
+    <div class="toggle-container">
+      <span class="toggle-label">Data Collection</span>
+      <label class="switch">
+        <input type="checkbox" id="toggle-switch">
+        <span class="slider round"></span>
+      </label>
+    </div>
+    <button id="logout-btn" class="danger">Sign Out</button>
+  </div>
+</div>
+  <script src="config.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
