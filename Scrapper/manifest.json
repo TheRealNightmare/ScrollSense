@@ -3,7 +3,11 @@
   "name": "ScrollSense",
   "version": "1.0",
   "permissions": ["storage"],
-  "host_permissions": ["https://www.facebook.com/*", "http://127.0.0.1:8000/*"],
+  "host_permissions": ["https://www.facebook.com/*", "http://127.0.0.1:8000/*", "https://*.supabase.co/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ScrollSense Dashboard"
+  },
   "background": {
     "service_worker": "background.js"
   },
