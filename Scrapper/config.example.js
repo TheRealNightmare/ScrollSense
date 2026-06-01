@@ -1,4 +1,3 @@
 const CONFIG = {
-    SUPABASE_URL: "https://your-project-id.supabase.co",
-    SUPABASE_ANON_KEY: "your-anon-key-here"
+    BACKEND_URL: "http://localhost:8000"
 };

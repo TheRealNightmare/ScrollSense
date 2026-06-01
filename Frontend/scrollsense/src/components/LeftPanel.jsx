@@ -1,18 +1,14 @@
-import React from 'react';
+import Logo from './Logo';
+
+// Deterministic mosaic (11 cols x 7 rows = 77) matching the "last week at a glance" graphic.
+const GRID_PALETTE = ['#8C4A32', '#1E4D3A', '#4A4742', '#2E3B34'];
+const GRID_CELLS = Array.from({ length: 77 }, (_, i) => GRID_PALETTE[(i * 7 + (i % 5)) % GRID_PALETTE.length]);
 
 const LeftPanel = () => {
-  // Generates 77 data blocks matching the graphic in your design
-  const gridCells = Array.from({ length: 77 }, () => {
-    const hexColors = ['#8C4A32', '#1E4D3A', '#4A4742', '#2E3B34'];
-    return hexColors[Math.floor(Math.random() * hexColors.length)];
-  });
 
   return (
     <div className="left-panel">
-      <div className="brand-logo">
-        <div className="logo-icon">▲</div>
-        <span className="brand-text">Scroll Sense</span>
-      </div>
+      <Logo variant="light" size={28} />
 
       <div className="left-main-content">
         <div className="section-label">Today's Read</div>
@@ -25,7 +21,7 @@ const LeftPanel = () => {
         <div className="grid-container">
           <div className="section-label">Last week, at a glance</div>
           <div className="data-grid">
-            {gridCells.map((bgColor, idx) => (
+            {GRID_CELLS.map((bgColor, idx) => (
               <div 
                 key={idx} 
                 className="grid-cell" 

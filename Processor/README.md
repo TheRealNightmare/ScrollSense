@@ -1,6 +1,7 @@
 # ScrollSense Processor
 
-RoBERTa-based sentiment analysis engine. Fine-tunes `roberta-base` on your labeled CSV data to classify social media posts as **positive**, **neutral**, or **negative**.
+Transformer-based sentiment analysis engine. Fine-tunes `xlm-roberta-base` (multilingual, handles
+Bengali-English code-mixed text) to classify social media posts as **positive** or **negative**.
 
 ---
 
@@ -19,14 +20,14 @@ pip install -r requirements.txt
 
 ### 1. Prepare your data
 
-Place your CSV at `data/your_data.csv`. Required columns:
+By default `DATA_CSV` points at `../EnBn_CodeMixed_TwoClass_Sentiment_Balanced_100k.csv` (repo root), with columns:
 
 | Column | Values |
 |--------|--------|
-| `text` | Raw post text |
-| `label` | `positive` / `neutral` / `negative` or `1` / `0` / `-1` |
+| `Code-Mixed-Text` | Raw post text (En-Bn code-mixed) |
+| `Sentiment` | `Positive` / `Negative` |
 
-> If your label column has a different name, update `LABEL_COL` in `config.py`.
+> To use a different file/columns, set `SCROLLSENSE_DATA_CSV` or edit `TEXT_COL` / `LABEL_COL` in `config.py`.
 
 ### 2. Run training
 
@@ -68,11 +69,10 @@ report = generate_report(predictions)
 {
   "text": "This is absolutely amazing!",
   "label": "positive",
-  "label_id": 2,
+  "label_id": 1,
   "confidence": 0.9712,
   "scores": {
-    "negative": 0.0081,
-    "neutral": 0.0207,
+    "negative": 0.0288,
     "positive": 0.9712
   }
 }
@@ -90,13 +90,14 @@ All settings live in `config.py`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `BASE_MODEL` | `roberta-base` | HuggingFace model ID |
+| `BASE_MODEL` | `xlm-roberta-base` | HuggingFace model ID (multilingual) |
+| `NUM_LABELS` | `2` | positive / negative |
 | `NUM_EPOCHS` | `5` | Training epochs |
 | `BATCH_SIZE` | `32` | Training batch size (reduce to 16 if OOM) |
 | `LEARNING_RATE` | `2e-5` | AdamW learning rate |
 | `MAX_SEQ_LEN` | `128` | Max token length per post |
-| `DATA_CSV` | `data/your_data.csv` | Path to your training CSV |
-| `CHECKPOINT_DIR` | `checkpoints/best_model` | Where the model is saved |
+| `DATA_CSV` | `../EnBn_..._100k.csv` | Path to training CSV (override via `SCROLLSENSE_DATA_CSV`) |
+| `CHECKPOINT_DIR` | `checkpoints/best_model` | Where the model is saved (override via `SCROLLSENSE_CHECKPOINT_DIR`) |
 
 ---
 

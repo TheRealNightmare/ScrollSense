@@ -1,95 +1,127 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import Logo from './Logo';
+import NavProfile, { displayName, initials } from './NavProfile';
+import api from '../api';
 
-const Settings = ({ onNavigateToDashboard, onNavigateToReports }) => {
-  // Sidebar Sub-navigation Controller State ('account' | 'notifications' | 'danger')
+const TabIcon = ({ name }) => {
+  const common = { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  if (name === 'account') return <svg {...common}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>;
+  if (name === 'connected') return <svg {...common}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>;
+  if (name === 'notifications') return <svg {...common}><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>;
+  return <svg {...common}><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>;
+};
+
+const Settings = ({ user, setUser, onLogout, onNavigateToDashboard, onNavigateToReports }) => {
   const [activeTab, setActiveTab] = useState('account');
 
-  // Account Form Local Fields States
-  const [name, setName] = useState('Maya Krishnan');
-  const [email, setEmail] = useState('maya@scrollsense.app');
+  // Profile fields seeded from the authenticated user.
+  const [name, setName] = useState(user?.name || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [profileMsg, setProfileMsg] = useState('');
 
-  // Notification Preferences Stateful Mapping
-  const [preferences, setPreferences] = useState({
-    spikes: true,
-    digest: true,
-    streaks: true,
-    news: false,
-  });
+  // Password change.
+  const [curPw, setCurPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [pwMsg, setPwMsg] = useState('');
 
-  const handleToggle = (key) => {
-    setPreferences((prev) => ({ ...prev, [key]: !prev[key] }));
+  // Server-side data-collection flag (the extension reads/respects this too).
+  const [collection, setCollection] = useState(!!user?.collection_enabled);
+  const [collectionMsg, setCollectionMsg] = useState('');
+
+  // Local-only notification preferences.
+  const [preferences, setPreferences] = useState({ spikes: true, digest: true, streaks: true, news: false });
+  const handleToggle = (key) => setPreferences((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const handleSaveChanges = async (e) => {
+    e.preventDefault();
+    setProfileMsg('');
+    try {
+      const updated = await api.updateProfile(name, email);
+      setUser(updated);
+      setProfileMsg('Saved.');
+    } catch (err) {
+      setProfileMsg(err.message);
+    }
   };
 
-  const handleSaveChanges = (e) => {
+  const handleChangePassword = async (e) => {
     e.preventDefault();
-    alert(`Saving account modifications for: ${name}`);
+    setPwMsg('');
+    if (newPw !== confirmPw) { setPwMsg('New passwords do not match.'); return; }
+    try {
+      await api.changePassword(curPw, newPw);
+      setPwMsg('Password updated.');
+      setCurPw(''); setNewPw(''); setConfirmPw('');
+    } catch (err) {
+      setPwMsg(err.message);
+    }
+  };
+
+  const toggleCollection = async (enabled) => {
+    setCollection(enabled);
+    setCollectionMsg('');
+    try {
+      await api.setCollection(enabled);
+      if (setUser && user) setUser({ ...user, collection_enabled: enabled });
+      setCollectionMsg(enabled ? 'Collection on.' : 'Collection paused.');
+    } catch (err) {
+      setCollection(!enabled); // revert
+      setCollectionMsg(err.message);
+    }
   };
 
   return (
     <div className="settings-container">
-      {/* Top Universal Nav Bar Header */}
       <nav className="dash-nav">
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-          <span className="brand-text" style={{ fontSize: '14px', cursor: 'pointer' }} onClick={onNavigateToDashboard}>▲ Scroll Sense</span>
+          <span style={{ cursor: 'pointer' }} onClick={onNavigateToDashboard}><Logo variant="dark" size={26} /></span>
           <div className="nav-links">
             <a href="#dash" className="nav-item" onClick={(e) => { e.preventDefault(); onNavigateToDashboard(); }}>Dashboard</a>
             <a href="#rep" className="nav-item" onClick={(e) => { e.preventDefault(); onNavigateToReports(); }}>Reports</a>
             <a href="#set" className="nav-item active">Settings</a>
           </div>
         </div>
-        <div className="nav-profile">
-          <span style={{ fontSize: '13px', fontWeight: '500' }}>Maya K.</span>
-          <div className="profile-avatar">MK</div>
-        </div>
+        <NavProfile user={user} onLogout={onLogout} />
       </nav>
 
-      {/* Hero Header Context Title */}
       <header className="settings-header-area">
         <div className="section-label" style={{ marginBottom: '0' }}>Settings</div>
         <h1 className="settings-title">Tune your scroll.</h1>
       </header>
 
-      {/* Main Structural Layout Grid */}
       <div className="settings-layout-grid">
-        
-        {/* Left Side: Dynamic Sidebar Tabs Component Controls */}
         <aside className="settings-sidebar">
-          <button 
-            className={`sidebar-tab-item ${activeTab === 'account' ? 'active' : ''}`}
-            onClick={() => setActiveTab('account')}
-          >
-            <span>👤</span> Account
+          <button className={`sidebar-tab-item ${activeTab === 'account' ? 'active' : ''}`} onClick={() => setActiveTab('account')}>
+            <TabIcon name="account" /> <span>Account</span>
+            {activeTab === 'account' && <span className="tab-active-dot"></span>}
           </button>
-       
-          <button 
-            className={`sidebar-tab-item ${activeTab === 'notifications' ? 'active' : ''}`}
-            onClick={() => setActiveTab('notifications')}
-          >
-            <span>🔔</span> Notifications
+          <button className={`sidebar-tab-item ${activeTab === 'connected' ? 'active' : ''}`} onClick={() => setActiveTab('connected')}>
+            <TabIcon name="connected" /> <span>Data collection</span>
+            {activeTab === 'connected' && <span className="tab-active-dot"></span>}
           </button>
-          <button 
-            className={`sidebar-tab-item ${activeTab === 'danger' ? 'active' : ''}`}
-            onClick={() => setActiveTab('danger')}
-          >
-            <span>🗑️</span> Danger zone
+          <button className={`sidebar-tab-item ${activeTab === 'notifications' ? 'active' : ''}`} onClick={() => setActiveTab('notifications')}>
+            <TabIcon name="notifications" /> <span>Notifications</span>
+            {activeTab === 'notifications' && <span className="tab-active-dot"></span>}
+          </button>
+          <button className={`sidebar-tab-item ${activeTab === 'danger' ? 'active' : ''}`} onClick={() => setActiveTab('danger')}>
+            <TabIcon name="danger" /> <span>Danger zone</span>
+            {activeTab === 'danger' && <span className="tab-active-dot"></span>}
           </button>
         </aside>
 
-        {/* Right Side: Tab Switching Content Window Pane */}
         <main className="settings-content-pane">
-          
-          {/* TAB VIEW 1: ACCOUNT PREFERENCES CONTAINER */}
+          {/* ACCOUNT */}
           {activeTab === 'account' && (
             <>
-              {/* Profile Inputs Card */}
               <div className="settings-card">
                 <h2 className="settings-card-title">Profile</h2>
                 <p className="settings-card-subtitle">How Scroll Sense addresses you in the app and on your reports.</p>
-                
+
                 <form onSubmit={handleSaveChanges}>
                   <div className="profile-form-row">
                     <div className="avatar-uploader">
-                      MK
+                      {initials(user)}
                       <div className="avatar-upload-icon">↑</div>
                     </div>
 
@@ -97,151 +129,153 @@ const Settings = ({ onNavigateToDashboard, onNavigateToReports }) => {
                       <div className="input-group" style={{ flex: 1 }}>
                         <label className="input-label">Name</label>
                         <div className="input-field-wrapper">
-                          <input 
-                            type="text" 
-                            value={name} 
-                            onChange={(e) => setName(e.target.value)} 
-                            className="auth-input"
-                          />
+                          <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="auth-input" />
                         </div>
                       </div>
 
                       <div className="input-group" style={{ flex: 1 }}>
                         <label className="input-label">Email</label>
                         <div className="input-field-wrapper">
-                          <input 
-                            type="email" 
-                            value={email} 
-                            onChange={(e) => setEmail(e.target.value)} 
-                            className="auth-input"
-                          />
+                          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="auth-input" />
                         </div>
                       </div>
                     </div>
                   </div>
 
                   <div className="form-actions-row">
-                    <button type="button" className="btn-discard" onClick={() => { setName('Maya Krishnan'); setEmail('maya@scrollsense.app'); }}>Discard</button>
+                    {profileMsg && <span style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginRight: 'auto' }}>{profileMsg}</span>}
+                    <button type="button" className="btn-discard" onClick={() => { setName(user?.name || ''); setEmail(user?.email || ''); setProfileMsg(''); }}>Discard</button>
                     <button type="submit" className="btn-save-settings">Save changes</button>
                   </div>
                 </form>
               </div>
 
-              {/* Plan Management Info Subscription Card */}
+              {/* Password */}
               <div className="settings-card">
-                <h2 className="settings-card-title">Plan</h2>
-                <div className="plan-hero-box" style={{ marginTop: '1rem' }}>
-                  <div>
-                    <div className="section-label" style={{ marginBottom: '0', fontSize: '8px' }}>Current</div>
-                    <h3 className="plan-title-spec" style={{ margin: '0', padding: '0', border: 'none' }}>
-                      Scroll Sense <span style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontWeight: '400', color: 'var(--color-text-dark)', marginLeft: '4px' }}>— Reader</span>
-                    </h3>
-                    <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)', marginTop: '4px' }}>
-                      Up to 50,000 posts / month · unlimited reports
+                <h2 className="settings-card-title">Password</h2>
+                <p className="settings-card-subtitle">This is the same login you use in the browser extension.</p>
+                <form onSubmit={handleChangePassword}>
+                  <div className="input-group">
+                    <label className="input-label">Current password</label>
+                    <div className="input-field-wrapper">
+                      <input type="password" value={curPw} onChange={(e) => setCurPw(e.target.value)} className="auth-input" required />
                     </div>
                   </div>
-                  <button className="btn-plan-upgrade" onClick={() => alert('Loading stripe billing subscription portal...')}>Upgrade</button>
-                </div>
+                  <div className="form-inputs-flex">
+                    <div className="input-group" style={{ flex: 1 }}>
+                      <label className="input-label">New password</label>
+                      <div className="input-field-wrapper">
+                        <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} className="auth-input" required />
+                      </div>
+                    </div>
+                    <div className="input-group" style={{ flex: 1 }}>
+                      <label className="input-label">Confirm new password</label>
+                      <div className="input-field-wrapper">
+                        <input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} className="auth-input" required />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="form-actions-row">
+                    {pwMsg && <span style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginRight: 'auto' }}>{pwMsg}</span>}
+                    <button type="submit" className="btn-save-settings">Update password</button>
+                  </div>
+                </form>
               </div>
             </>
           )}
 
-          {/* TAB VIEW 2: NOTIFICATIONS PREFERENCES CONTAINER */}
-          {activeTab === 'notifications' && (
+          {/* DATA COLLECTION */}
+          {activeTab === 'connected' && (
             <div className="settings-card">
-              <h2 className="settings-card-title">Notification preferences</h2>
-              <p className="settings-card-subtitle">A gentle nudge, never a barrage.</p>
-              
+              <h2 className="settings-card-title">Data collection</h2>
+              <p className="settings-card-subtitle">Controls whether ScrollSense scores new posts from your feed. The browser extension respects this switch too.</p>
+
               <div className="notification-list">
                 <div className="notification-item">
                   <div className="notification-info">
-                    <span className="notification-title">Email me when negativity spikes</span>
-                    <span className="notification-desc">We'll send a short note if your feed swings 15% below your baseline for more than an hour.</span>
+                    <span className="notification-title">Collect &amp; analyze my feed</span>
+                    <span className="notification-desc">When on, posts you scroll past in the extension are scored and added to your dashboard.</span>
                   </div>
                   <label className="switch-container">
-                    <input type="checkbox" checked={preferences.spikes} onChange={() => handleToggle('spikes')} />
+                    <input type="checkbox" checked={collection} onChange={(e) => toggleCollection(e.target.checked)} />
                     <span className="switch-slider"></span>
                   </label>
                 </div>
+              </div>
+              {collectionMsg && <p style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '0.75rem' }}>{collectionMsg}</p>}
 
-                <div className="notification-item">
-                  <div className="notification-info">
-                    <span className="notification-title">Weekly digest</span>
-                    <span className="notification-desc">Sunday evenings — a one-screen recap with your top keywords and bright/heavy days.</span>
+              <div className="connected-list" style={{ marginTop: '1.5rem' }}>
+                <div className="connected-row">
+                  <div className="connected-info">
+                    <span className="connected-name">Facebook</span>
+                    <span className="connected-status"><span className="dot-connected"></span> Connected as {displayName(user)}</span>
                   </div>
-                  <label className="switch-container">
-                    <input type="checkbox" checked={preferences.digest} onChange={() => handleToggle('digest')} />
-                    <span className="switch-slider"></span>
-                  </label>
                 </div>
-
-                <div className="notification-item">
-                  <div className="notification-info">
-                    <span className="notification-title">Bright streaks</span>
-                    <span className="notification-desc">A small celebration when your feed stays above 70% positive for 5 days in a row.</span>
+                <div className="connected-row" style={{ opacity: 0.65 }}>
+                  <div className="connected-info">
+                    <span className="connected-name">Instagram</span>
+                    <span className="connected-status">Coming soon</span>
                   </div>
-                  <label className="switch-container">
-                    <input type="checkbox" checked={preferences.streaks} onChange={() => handleToggle('streaks')} />
-                    <span className="switch-slider"></span>
-                  </label>
-                </div>
-
-                <div className="notification-item">
-                  <div className="notification-info">
-                    <span className="notification-title">Product news</span>
-                    <span className="notification-desc">New features, new platforms, and the occasional changelog. About once a month.</span>
-                  </div>
-                  <label className="switch-container">
-                    <input type="checkbox" checked={preferences.news} onChange={() => handleToggle('news')} />
-                    <span className="switch-slider"></span>
-                  </label>
                 </div>
               </div>
             </div>
           )}
 
-          {/* TAB VIEW 3: DANGER ZONE CONTAINER MATCHING THE CAPTURED IMAGE */}
+          {/* NOTIFICATIONS (local-only) */}
+          {activeTab === 'notifications' && (
+            <div className="settings-card">
+              <h2 className="settings-card-title">Notification preferences</h2>
+              <p className="settings-card-subtitle">A gentle nudge, never a barrage. (Saved on this device.)</p>
+
+              <div className="notification-list">
+                {[
+                  ['spikes', 'Email me when negativity spikes', "We'll send a short note if your feed swings below your baseline."],
+                  ['digest', 'Weekly digest', 'Sunday evenings — a one-screen recap with your top keywords.'],
+                  ['streaks', 'Bright streaks', 'A small celebration when your feed stays bright for 5 days in a row.'],
+                  ['news', 'Product news', 'New features and the occasional changelog. About once a month.'],
+                ].map(([key, title, desc]) => (
+                  <div className="notification-item" key={key}>
+                    <div className="notification-info">
+                      <span className="notification-title">{title}</span>
+                      <span className="notification-desc">{desc}</span>
+                    </div>
+                    <label className="switch-container">
+                      <input type="checkbox" checked={preferences[key]} onChange={() => handleToggle(key)} />
+                      <span className="switch-slider"></span>
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* DANGER ZONE */}
           {activeTab === 'danger' && (
             <div className="settings-card" style={{ borderColor: 'var(--color-border)' }}>
               <h2 className="settings-card-title" style={{ color: '#8C4A32' }}>Danger zone</h2>
               <p className="settings-card-subtitle">Quiet, reversible actions live up top. The loud ones live here.</p>
-              
+
               <div className="danger-list">
-                
-                {/* Action Block 1 */}
                 <div className="danger-action-row">
                   <div className="danger-action-info">
                     <span className="danger-action-title">Pause sentiment analysis</span>
-                    <span className="danger-action-desc">Stop reading new posts for now. Your historical data stays put.</span>
+                    <span className="danger-action-desc">Stop scoring new posts. Your historical data stays put.</span>
                   </div>
-                  <button className="btn-danger-outline" onClick={() => alert('Analysis engine paused.')}>Pause</button>
+                  <button className="btn-danger-outline" onClick={() => toggleCollection(false)}>Pause</button>
                 </div>
 
-                {/* Action Block 2 */}
                 <div className="danger-action-row">
                   <div className="danger-action-info">
-                    <span className="danger-action-title">Export everything</span>
-                    <span className="danger-action-desc">A zip of every post we've scored, every report you've generated, and your settings.</span>
+                    <span className="danger-action-title">Sign out</span>
+                    <span className="danger-action-desc">Sign out of the web app on this device.</span>
                   </div>
-                  <button className="btn-danger-outline" onClick={() => alert('Compiling cloud architecture backup link package...')}>Request export</button>
+                  <button className="btn-danger-outline" onClick={onLogout}>Sign out</button>
                 </div>
-
-                {/* Action Block 3 */}
-                <div className="danger-action-row">
-                  <div className="danger-action-info">
-                    <span className="danger-action-title">Delete account</span>
-                    <span className="danger-action-desc">Wipes your account, your feed history, and your reports. Cannot be undone.</span>
-                  </div>
-                  <button className="btn-danger-text-alert" onClick={() => confirm('Are you completely sure you want to permanently delete your history logs?')}>Delete account</button>
-                </div>
-
               </div>
             </div>
           )}
-
         </main>
       </div>
-
     </div>
   );
 };

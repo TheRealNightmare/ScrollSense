@@ -12,6 +12,10 @@ ENV/
 .python-version
 .env
 
+# --- SQLite database (local datastore) ---
+*.db
+*.sqlite3
+
 # --- Chrome Extension Artifacts ---
 *.crx
 

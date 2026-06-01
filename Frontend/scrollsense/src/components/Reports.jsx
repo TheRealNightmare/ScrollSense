@@ -1,119 +1,137 @@
-import React from 'react';
+import { useEffect, useState } from 'react';
+import Logo from './Logo';
+import NavProfile from './NavProfile';
+import api from '../api';
 
-const Reports = ({ onNavigateToDashboard, onNavigateToSettings }) => {
-  // Historical data logs matching the layout schema image
-  const records = [
-    { id: "rpt_0142", type: "Sentiment digest", range: "May 1 – May 14, 2026", posts: "18,420", sentiment: "68 %", key: "graduation", date: "May 15, 2026", trend: "pos" },
-    { id: "rpt_0141", type: "Sentiment digest", range: "Apr 16 – Apr 30, 2026", posts: "21,704", sentiment: "61 %", key: "inflation", date: "May 1, 2026", trend: "neu" },
-    { id: "rpt_0140", type: "Sentiment digest", range: "Apr 1 – Apr 15, 2026", posts: "19,238", sentiment: "64 %", key: "spring", date: "Apr 16, 2026", trend: "neu" },
-    { id: "rpt_0139", type: "Sentiment digest", range: "Mar 16 – Mar 31, 2026", posts: "20,115", sentiment: "59 %", key: "taxes", date: "Apr 1, 2026", trend: "neg" },
-    { id: "rpt_0138", type: "Sentiment digest", range: "Feb 14 – Mar 14, 2026", posts: "38,492", sentiment: "66 %", key: "valentines", date: "Mar 15, 2026", trend: "pos" }
-  ];
+const CalendarIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-text-muted)' }}>
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+  </svg>
+);
+
+const iso = (d) => d.toISOString().slice(0, 10);
+const fmtRange = (start, end) => {
+  const opts = { month: 'short', day: 'numeric', year: 'numeric' };
+  return `${new Date(start + 'T00:00:00').toLocaleDateString('en-US', opts)} – ${new Date(end + 'T00:00:00').toLocaleDateString('en-US', opts)}`;
+};
+
+const Reports = ({ user, onLogout, onNavigateToDashboard, onNavigateToSettings }) => {
+  const today = new Date();
+  const monthAgo = new Date();
+  monthAgo.setDate(today.getDate() - 29);
+
+  const [startDate, setStartDate] = useState(iso(monthAgo));
+  const [endDate, setEndDate] = useState(iso(today));
+  const [activePill, setActivePill] = useState('30');
+  const [summary, setSummary] = useState(null);
+  const [generating, setGenerating] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [error, setError] = useState('');
+
+  const loadHistory = () => {
+    api.reportHistory().then(setHistory).catch((e) => setError(e.message));
+  };
+  useEffect(loadHistory, []);
+
+  const applyPill = (days, key) => {
+    const s = new Date();
+    s.setDate(today.getDate() - (days - 1));
+    setStartDate(iso(s));
+    setEndDate(iso(today));
+    setActivePill(key);
+  };
+
+  const generate = async () => {
+    setError('');
+    setGenerating(true);
+    try {
+      const s = await api.reportSummary(startDate, endDate);
+      setSummary(s);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // Header stat tokens, derived from real history.
+  const reportsRun = history.length;
+  const medianSentiment = history.length
+    ? [...history].map((h) => h.avg_sentiment_pct).sort((a, b) => a - b)[Math.floor(history.length / 2)]
+    : 0;
+
+  const trendColor = (t) => (t === 'pos' ? '#1E4D3A' : t === 'neg' ? '#8C4A32' : 'var(--color-text-dark)');
 
   return (
     <div className="reports-container">
-      {/* Top Universal Navbar Header */}
       <nav className="dash-nav">
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-          <span className="brand-text" style={{ fontSize: '14px', cursor: 'pointer' }} onClick={onNavigateToDashboard}>▲ Scroll Sense</span>
+          <span style={{ cursor: 'pointer' }} onClick={onNavigateToDashboard}><Logo variant="dark" size={26} /></span>
           <div className="nav-links">
             <a href="#dash" className="nav-item" onClick={(e) => { e.preventDefault(); onNavigateToDashboard(); }}>Dashboard</a>
             <a href="#rep" className="nav-item active">Reports</a>
             <a href="#set" className="nav-item" onClick={(e) => { e.preventDefault(); onNavigateToSettings(); }}>Settings</a>
           </div>
         </div>
-        <div className="nav-profile">
-          <span style={{ fontSize: '13px', fontWeight: '500' }}>Maya K.</span>
-          <div className="profile-avatar">MK</div>
-        </div>
+        <NavProfile user={user} onLogout={onLogout} />
       </nav>
 
-      {/* Hero Reports Subheader Section */}
       <header className="reports-main-header">
         <div className="reports-title-area">
           <div className="section-label" style={{ marginBottom: '0' }}>Reports</div>
           <h1 className="reports-title">Generate your sentiment report.</h1>
-          <p className="reports-subtitle">Pick a range, pick a feeling. We'll pull together a clean PDF you can share, archive, or quietly screenshot at 1am.</p>
+          <p className="reports-subtitle">Pick a range and we'll pull together a clean summary of how your feed felt over that window.</p>
         </div>
 
         <div className="top-stats-container">
           <div className="stat-token">
-            <div className="token-num">142</div>
-            <div className="token-lbl">Reports Run</div>
+            <div className="token-num">{reportsRun}</div>
+            <div className="token-lbl">Windows</div>
           </div>
           <div className="stat-token">
-            <div className="token-num">38d</div>
-            <div className="token-lbl">Avg Range</div>
+            <div className="token-num">14d</div>
+            <div className="token-lbl">Window Size</div>
           </div>
           <div className="stat-token">
-            <div className="token-num">68%</div>
+            <div className="token-num">{medianSentiment}%</div>
             <div className="token-lbl">Median Sentiment</div>
           </div>
         </div>
       </header>
 
-      {/* Multi-Step Selection Layout and Document Live Preview Module */}
+      {error && <div className="dash-banner error">{error}</div>}
+
       <div className="reports-grid">
-        
-        {/* Left Side: Configuration Actions */}
+        {/* Left: Configuration */}
         <div className="config-column">
-          
-          {/* Step 1: Calendar Window */}
           <div className="step-card">
             <div className="step-meta">Step 1</div>
             <h3 className="step-title">Choose your window</h3>
-            
+
             <div className="date-inputs-row">
               <div className="date-box">
                 <label>Start Date</label>
-                <input type="text" defaultValue="05/01/2026" />
+                <div className="date-field">
+                  <input type="date" value={startDate} max={endDate} onChange={(e) => { setStartDate(e.target.value); setActivePill(''); }} />
+                  <CalendarIcon />
+                </div>
               </div>
               <div className="date-box">
                 <label>End Date</label>
-                <input type="text" defaultValue="05/15/2026" />
+                <div className="date-field">
+                  <input type="date" value={endDate} max={iso(today)} onChange={(e) => { setEndDate(e.target.value); setActivePill(''); }} />
+                  <CalendarIcon />
+                </div>
               </div>
             </div>
 
             <div className="pill-row">
-              <button className="filter-pill">Last 7 days</button>
-              <button className="filter-pill active">Last 30 days</button>
-              <button className="filter-pill">Last 90 days</button>
-              <button className="filter-pill">Year to date</button>
-            </div>
-
-            <div className="calendar-mock">
-              <div className="cal-header">
-                <span>‹</span>
-                <span style={{ fontSize: '13px', fontWeight: '500' }}>May 2026</span>
-                <span>›</span>
-              </div>
-              <div className="cal-grid">
-                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-                  <div key={i} className="cal-day-label">{d}</div>
-                ))}
-                
-                {/* Visual Calendar Grid Assembly Map matching design */}
-                <div className="cal-cell empty"></div>
-                <div className="cal-cell empty"></div>
-                <div className="cal-cell empty"></div>
-                <div className="cal-cell empty"></div>
-                <div className="cal-cell empty"></div>
-                <div className="cal-cell range-edge">1</div>
-                <div className="cal-cell range-bg">2</div>
-                
-                {[3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].map(n => (
-                  <div key={n} className="cal-cell range-bg">{n}</div>
-                ))}
-                <div className="cal-cell range-edge">15</div>
-                <div className="cal-cell">16</div>
-                {[17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].map(n => (
-                  <div key={n} className="cal-cell">{n}</div>
-                ))}
-              </div>
+              <button className={`filter-pill ${activePill === '7' ? 'active' : ''}`} onClick={() => applyPill(7, '7')}>Last 7 days</button>
+              <button className={`filter-pill ${activePill === '30' ? 'active' : ''}`} onClick={() => applyPill(30, '30')}>Last 30 days</button>
+              <button className={`filter-pill ${activePill === '90' ? 'active' : ''}`} onClick={() => applyPill(90, '90')}>Last 90 days</button>
             </div>
           </div>
 
-          {/* Step 2: Source Selection */}
           <div className="step-card">
             <div className="step-meta">Step 2</div>
             <h3 className="step-title">Source</h3>
@@ -133,95 +151,88 @@ const Reports = ({ onNavigateToDashboard, onNavigateToSettings }) => {
             </div>
           </div>
 
-          {/* Step 3: Include Scope Toggles */}
           <div className="step-card">
             <div className="step-meta">Step 3</div>
             <h3 className="step-title">Include</h3>
             <div className="badge-row">
               <button className="sentiment-badge" style={{ backgroundColor: '#1E4D3A' }}>● Positive</button>
               <button className="sentiment-badge" style={{ backgroundColor: '#8C4A32' }}>● Negative</button>
-              <button className="sentiment-badge" style={{ backgroundColor: '#4A4742' }}>● Neutral</button>
             </div>
-            
-            <button className="btn-generate" onClick={() => alert('Compiling document payload metadata aggregates...')}>
-              <span>⚙</span> Generate report
+
+            <button className="btn-generate" onClick={generate} disabled={generating}>
+              <span>⚙</span> {generating ? 'Generating…' : 'Generate report'}
             </button>
           </div>
-
         </div>
 
-        {/* Right Side: Document Content Blueprint Box Preview */}
+        {/* Right: Preview */}
         <div className="preview-column">
           <div className="preview-card">
             <div className="preview-top-bar">
               <div>
                 <div className="section-label" style={{ marginBottom: '2px' }}>Preview</div>
-                <div style={{ fontFamily: 'var(--font-serif)', fontSize: '18px', fontWeight: '500' }}>May 1 – May 15, 2026</div>
-              </div>
-              <button className="btn-download-pdf">
-                <span>↓</span> Download PDF
-              </button>
-            </div>
-
-            <div className="preview-stat-grid">
-              <div className="preview-stat-item">
-                <div className="token-lbl">Total Posts</div>
-                <div style={{ fontFamily: 'var(--font-serif)', fontSize: '18px', marginTop: '2px' }}>18,420</div>
-              </div>
-              <div className="preview-stat-item">
-                <div className="token-lbl">Avg Sentiment</div>
-                <div style={{ fontFamily: 'var(--font-serif)', fontSize: '18px', marginTop: '2px' }}>68%</div>
-              </div>
-              <div className="preview-stat-item">
-                <div className="token-lbl">Top Keyword</div>
-                <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: '18px', marginTop: '2px' }}>graduation</div>
+                <div style={{ fontFamily: 'var(--font-serif)', fontSize: '18px', fontWeight: '500' }}>
+                  {fmtRange(startDate, endDate)}
+                </div>
               </div>
             </div>
 
-            <div className="preview-days-counter">
-              <span style={{ color: 'var(--color-text-muted)' }}>Bright days</span>
-              <span style={{ fontFamily: 'var(--font-serif)', color: '#1E4D3A', fontSize: '16px' }}>12</span>
-              <span style={{ color: 'var(--color-text-muted)', marginLeft: '1rem' }}>Heavy days</span>
-              <span style={{ fontFamily: 'var(--font-serif)', color: '#8C4A32', fontSize: '16px' }}>3</span>
-            </div>
+            {!summary ? (
+              <p style={{ fontSize: '13px', color: 'var(--color-text-muted)', padding: '2rem 0', textAlign: 'center' }}>
+                Pick a window and hit <strong>Generate report</strong> to see your summary.
+              </p>
+            ) : (
+              <>
+                <div className="preview-stat-grid">
+                  <div className="preview-stat-item">
+                    <div className="token-lbl">Total Posts</div>
+                    <div style={{ fontFamily: 'var(--font-serif)', fontSize: '18px', marginTop: '2px' }}>{summary.total_posts.toLocaleString()}</div>
+                  </div>
+                  <div className="preview-stat-item">
+                    <div className="token-lbl">Avg Sentiment</div>
+                    <div style={{ fontFamily: 'var(--font-serif)', fontSize: '18px', marginTop: '2px' }}>{summary.avg_sentiment_pct}%</div>
+                  </div>
+                  <div className="preview-stat-item">
+                    <div className="token-lbl">Top Keyword</div>
+                    <div style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: '18px', marginTop: '2px' }}>{summary.top_keyword}</div>
+                  </div>
+                </div>
 
-            {/* Micro Dashboard Vector Approximation Sparkline */}
-            <div style={{ height: '60px', margin: '1.5rem 0', borderBottom: '1px solid var(--color-border)', paddingBottom: '1rem' }}>
-              <svg viewBox="0 0 300 50" style={{ width: '100%', height: '100%' }}>
-                <path d="M0,25 Q75,10 150,20 T300,15" fill="none" stroke="#1E4D3A" strokeWidth="2" />
-                <path d="M0,40 Q75,42 150,45 T300,38" fill="none" stroke="#8C4A32" strokeWidth="1.5" />
-              </svg>
-            </div>
+                <div className="preview-days-counter">
+                  <span style={{ color: 'var(--color-text-muted)' }}>Bright days</span>
+                  <span style={{ fontFamily: 'var(--font-serif)', color: '#1E4D3A', fontSize: '16px' }}>{summary.bright_days}</span>
+                  <span style={{ color: 'var(--color-text-muted)', marginLeft: '1rem' }}>Heavy days</span>
+                  <span style={{ fontFamily: 'var(--font-serif)', color: '#8C4A32', fontSize: '16px' }}>{summary.heavy_days}</span>
+                </div>
 
-            <p style={{ fontSize: '11px', color: 'var(--color-text-muted)', lineHeight: '1.4', margin: '0' }}>
-              You scrolled <strong>brighter</strong> than 71% of Scroll Sense readers this window. Most of your heavy days clustered around news cycles on May 6 and May 11.
-            </p>
+                {summary.total_posts === 0 && (
+                  <p style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '1rem' }}>
+                    No posts were scored in this window.
+                  </p>
+                )}
+              </>
+            )}
           </div>
 
-          {/* What's Inside Checklist Meta Box */}
           <div className="preview-card" style={{ backgroundColor: 'var(--color-bg-light)' }}>
-            <div className="token-lbl" style={{ marginBottom: '0.75rem' }}>What's inside the PDF</div>
+            <div className="token-lbl" style={{ marginBottom: '0.75rem' }}>What's in this report</div>
             <div className="pdf-spec-list">
-              <div className="pdf-spec-item">✓ Cover with score card</div>
-              <div className="pdf-spec-item">✓ Daily breakdown table</div>
-              <div className="pdf-spec-item">✓ Sentiment-over-time chart</div>
-              <div className="pdf-spec-item">✓ Top keywords list</div>
-              <div className="pdf-spec-item">✓ Content type donut</div>
-              <div className="pdf-spec-item">✓ Methodology note</div>
+              <div className="pdf-spec-item">✓ Total posts scored</div>
+              <div className="pdf-spec-item">✓ Average positive sentiment</div>
+              <div className="pdf-spec-item">✓ Top keyword of the window</div>
+              <div className="pdf-spec-item">✓ Bright / heavy day counts</div>
             </div>
           </div>
         </div>
-
       </div>
 
-      {/* Bottom Historical Ledger Data Section */}
+      {/* History */}
       <section className="history-section">
         <div className="history-header">
           <div>
             <div className="section-label" style={{ marginBottom: '0' }}>History</div>
-            <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '22px', margin: '4px 0 0 0', fontWeight: '400' }}>Past reports</h2>
+            <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '22px', margin: '4px 0 0 0', fontWeight: '400' }}>Past windows</h2>
           </div>
-          <a href="#seeall" style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>See all →</a>
         </div>
 
         <div className="reports-table-wrapper">
@@ -234,40 +245,31 @@ const Reports = ({ onNavigateToDashboard, onNavigateToSettings }) => {
                 <th>Avg Sentiment</th>
                 <th>Top Keyword</th>
                 <th>Generated</th>
-                <th></th>
               </tr>
             </thead>
             <tbody>
-              {records.map((row) => (
+              {history.length === 0 && (
+                <tr><td colSpan={6} style={{ color: 'var(--color-text-muted)', padding: '1.5rem' }}>No history yet — once your feed has scored posts, fortnightly windows appear here.</td></tr>
+              )}
+              {history.map((row) => (
                 <tr key={row.id}>
                   <td>
                     <div>{row.type}</div>
                     <div className="tbl-codename">{row.id}</div>
                   </td>
-                  <td>{row.range}</td>
-                  <td style={{ fontFamily: 'var(--font-mono)' }}>{row.posts}</td>
+                  <td>{fmtRange(row.start, row.end)}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)' }}>{row.total_posts.toLocaleString()}</td>
                   <td>
-                    <span style={{ 
-                      color: row.trend === 'pos' ? '#1E4D3A' : row.trend === 'neg' ? '#8C4A32' : 'var(--color-text-dark)',
-                      fontWeight: '500' 
-                    }}>
-                      ● {row.sentiment}
-                    </span>
+                    <span style={{ color: trendColor(row.trend), fontWeight: '500' }}>● {row.avg_sentiment_pct}%</span>
                   </td>
-                  <td className="tbl-keyword">{row.key}</td>
-                  <td>{row.date}</td>
-                  <td>
-                    <button className="btn-re-download" onClick={() => alert(`Re-downloading ${row.id} build...`)}>
-                      ↓ Re-download
-                    </button>
-                  </td>
+                  <td className="tbl-keyword">{row.top_keyword}</td>
+                  <td>{new Date(row.generated + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </section>
-
     </div>
   );
 };
