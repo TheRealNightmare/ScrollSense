@@ -2,15 +2,17 @@
 
 Runs two services with a single command:
 
-- **FastAPI** (`http://127.0.0.1:8000`) — ingestion API used by the browser extension to save scraped Facebook posts to Supabase
-- **Streamlit Labeler** (`http://localhost:8501`) — interactive UI for manually labeling those posts as Positive / Neutral / Negative
+- **FastAPI** (`http://127.0.0.1:8000`) — auth + ingestion API used by the browser extension. On `/ingest` it
+  runs the fine-tuned sentiment model (from `../Processor/checkpoints/best_model`) and stores the post plus its
+  predicted label/confidence in a local **SQLite** database (`scrollsense.db`).
+- **Streamlit Labeler** (`http://localhost:8501`) — interactive UI for reviewing/correcting those posts as Positive / Negative
 
 ---
 
 ## Prerequisites
 
 - Python 3.10+
-- A Supabase project with a `posts` table
+- A trained checkpoint produced by the Processor (`cd ../Processor && python train.py`)
 
 ---
 
@@ -28,7 +30,7 @@ pip install -r requirements.txt
 
 # configure credentials
 cp .env.example .env
-# open .env and fill in SUPABASE_URL and SUPABASE_KEY
+# open .env and set JWT_SECRET to a long random string
 ```
 
 ---
@@ -45,9 +47,16 @@ Both servers start immediately. Open `http://localhost:8501` in your browser to 
 
 ## API Reference
 
+### `POST /auth/signup` · `POST /auth/login`
+
+```json
+{ "email": "<string>", "password": "<string>" }
+```
+Returns `{ "access_token": "<jwt>" }`. Send it as `Authorization: Bearer <jwt>` on `/ingest`.
+
 ### `POST /ingest`
 
-Saves a scraped post to Supabase (used by the browser extension).
+Runs the sentiment model on the post, then saves it to SQLite (used by the browser extension). Requires auth.
 
 **Request body:**
 ```json
@@ -56,7 +65,7 @@ Saves a scraped post to Supabase (used by the browser extension).
 
 **Response:**
 ```json
-{ "status": "success" }
+{ "status": "success", "label": "positive", "confidence": 0.97 }
 ```
 
 ---
@@ -64,7 +73,7 @@ Saves a scraped post to Supabase (used by the browser extension).
 ## Labeler UI
 
 - Shows one post at a time, queuing only **unlabeled** posts by default
-- Label buttons: 🟢 Positive (`1`) · 🟡 Neutral (`0`) · 🔴 Negative (`-1`)
+- Label buttons: 🟢 Positive (`1`) · 🔴 Negative (`0`)
 - ⏭ Skip — moves to the next post without saving
 - ← / → navigation to revisit posts
 - Sidebar toggle to review and re-label already-labeled posts

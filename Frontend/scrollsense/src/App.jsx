@@ -1,20 +1,53 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
 import LeftPanel from './components/LeftPanel';
 import LoginForm from './components/LoginForm';
 import SignupForm from './components/SignupForm';
 import Dashboard from './components/Dashboard';
 import Reports from './components/Reports';
-import Settings from './components/Settings'; // Import the new Settings Component
+import Settings from './components/Settings';
+import api, { isAuthed, clearToken } from './api';
 
 function App() {
-  // Global Routing Views Key State Engine: 'login' | 'signup' | 'dashboard' | 'reports' | 'settings'
-  const [currentPage, setCurrentPage] = useState('login');
+  // Routing views: 'login' | 'signup' | 'dashboard' | 'reports' | 'settings'
+  const [currentPage, setCurrentPage] = useState(isAuthed() ? 'dashboard' : 'login');
+  const [user, setUser] = useState(null);
+  const [bootstrapping, setBootstrapping] = useState(isAuthed());
 
-  // Intercept Page Routing State Switches Definitions
+  // On load, if a token exists, resolve it to the current user (and bounce to
+  // login if it's stale). This is the same JWT the extension uses.
+  useEffect(() => {
+    if (!isAuthed()) return;
+    api.me()
+      .then((u) => { setUser(u); setCurrentPage('dashboard'); })
+      .catch(() => { clearToken(); setCurrentPage('login'); })
+      .finally(() => setBootstrapping(false));
+  }, []);
+
+  const handleAuthSuccess = (u) => {
+    setUser(u);
+    setCurrentPage('dashboard');
+  };
+
+  const handleLogout = () => {
+    clearToken();
+    setUser(null);
+    setCurrentPage('login');
+  };
+
+  if (bootstrapping) {
+    return (
+      <div className="app-loading">
+        <span className="badge-dot"></span> Loading your feed…
+      </div>
+    );
+  }
+
   if (currentPage === 'dashboard') {
     return (
-      <Dashboard 
-        onNavigateToReports={() => setCurrentPage('reports')} 
+      <Dashboard
+        user={user}
+        onLogout={handleLogout}
+        onNavigateToReports={() => setCurrentPage('reports')}
         onNavigateToSettings={() => setCurrentPage('settings')}
       />
     );
@@ -22,8 +55,10 @@ function App() {
 
   if (currentPage === 'reports') {
     return (
-      <Reports 
-        onNavigateToDashboard={() => setCurrentPage('dashboard')} 
+      <Reports
+        user={user}
+        onLogout={handleLogout}
+        onNavigateToDashboard={() => setCurrentPage('dashboard')}
         onNavigateToSettings={() => setCurrentPage('settings')}
       />
     );
@@ -31,8 +66,11 @@ function App() {
 
   if (currentPage === 'settings') {
     return (
-      <Settings 
-        onNavigateToDashboard={() => setCurrentPage('dashboard')} 
+      <Settings
+        user={user}
+        setUser={setUser}
+        onLogout={handleLogout}
+        onNavigateToDashboard={() => setCurrentPage('dashboard')}
         onNavigateToReports={() => setCurrentPage('reports')}
       />
     );
@@ -41,16 +79,16 @@ function App() {
   return (
     <div className="app-container">
       <LeftPanel />
-      
+
       {currentPage === 'login' ? (
-        <LoginForm 
-          onNavigateToSignup={() => setCurrentPage('signup')} 
-          onLoginSuccess={() => setCurrentPage('dashboard')} 
+        <LoginForm
+          onNavigateToSignup={() => setCurrentPage('signup')}
+          onLoginSuccess={handleAuthSuccess}
         />
       ) : (
-        <SignupForm 
-          onNavigateToLogin={() => setCurrentPage('login')} 
-          onLoginSuccess={() => setCurrentPage('dashboard')}
+        <SignupForm
+          onNavigateToLogin={() => setCurrentPage('login')}
+          onLoginSuccess={handleAuthSuccess}
         />
       )}
     </div>

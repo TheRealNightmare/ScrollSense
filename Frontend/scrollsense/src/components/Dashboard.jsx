@@ -1,200 +1,348 @@
-import React from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Logo from './Logo';
+import NavProfile from './NavProfile';
+import api from '../api';
 
-const Dashboard = ({ onNavigateToReports, onNavigateToSettings }) => {
-  // Mock recent data tracking matching the interface capture
-  const feeds = [
-    { text: "Finally hit my running goal — 100 km this month. Knees are toast, heart is full.", cat: "PERSONAL", conf: "96% confidence", time: "2 min ago", type: "pos" },
-    { text: "Op-ed: why the new housing bill won't move the needle in any city under 500k people.", cat: "NEWS", conf: "81% confidence", time: "11 min ago", type: "neg" },
-    { text: "Anyone else getting served the same 3 ads on a loop today? It's the same loafer.", cat: "AD", conf: "62% confidence", time: "24 min ago", type: "neu" }
-  ];
+const RANGE_DAYS = { '7D': 7, '30D': 30, '90D': 90 };
+
+const sentimentColor = (s) => (s === 'pos' ? '#1E4D3A' : s === 'neg' ? '#8C4A32' : '#73706B');
+const sentimentLabel = (s) => (s === 'pos' ? 'Positive' : s === 'neg' ? 'Negative' : 'Neutral');
+
+const relativeTime = (iso) => {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} hr ago`;
+  return `${Math.floor(diff / 86400)} d ago`;
+};
+
+const shortDate = (iso) =>
+  new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+// Map a series of positivity percentages to an SVG polyline path (viewBox 500x160).
+const linePath = (values) => {
+  if (!values.length) return '';
+  const w = 500;
+  const stepX = values.length > 1 ? w / (values.length - 1) : 0;
+  return values
+    .map((pct, i) => {
+      const x = i * stepX;
+      const y = 150 - (pct / 100) * 130;
+      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+};
+
+const Dashboard = ({ user, onLogout, onNavigateToReports, onNavigateToSettings }) => {
+  const [range, setRange] = useState('7D');
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    const days = RANGE_DAYS[range];
+    Promise.all([
+      api.overview(days),
+      api.timeline(days),
+      api.keywords(days),
+      api.heatmap(30),
+      api.posts(10),
+    ])
+      .then(([overview, timeline, keywords, heatmap, posts]) => {
+        if (!cancelled) setData({ overview, timeline, keywords, heatmap, posts });
+      })
+      .catch((err) => { if (!cancelled) setError(err.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [range]);
+
+  const o = data?.overview;
+  const isEmpty = o && o.posts_analyzed === 0;
+
+  // Derived chart geometry.
+  const volumeMax = useMemo(
+    () => Math.max(1, ...((data?.timeline || []).map((t) => t.total))),
+    [data]
+  );
+  const posLine = useMemo(() => linePath((data?.timeline || []).map((t) => t.positivity_pct)), [data]);
+  const negLine = useMemo(() => linePath((data?.timeline || []).map((t) => 100 - t.positivity_pct)), [data]);
+  const kwMax = useMemo(() => Math.max(1, ...((data?.keywords || []).map((k) => k.count))), [data]);
+
+  const gaugePct = o?.positivity_pct ?? 0;
+  const circumference = 408;
+  const gaugeOffset = circumference * (1 - gaugePct / 100);
+
+  const todayLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   return (
     <div className="dashboard-container">
       {/* Navigation Top Header */}
       <nav className="dash-nav">
         <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-          <span className="brand-text" style={{ fontSize: '14px' }}>▲ Scroll Sense</span>
+          <Logo variant="dark" size={26} />
           <div className="nav-links">
             <a href="#dash" className="nav-item active">Dashboard</a>
-            
-            {/* Connected to route to the Reports page */}
-            <a 
-              href="#rep" 
-              className="nav-item" 
-              onClick={(e) => { e.preventDefault(); onNavigateToReports(); }}
-            >
-              Reports
-            </a>
-            
-            {/* Connected to route to Settings */}
-            <a 
-              href="#set" 
-              className="nav-item"
-              onClick={(e) => { e.preventDefault(); onNavigateToSettings(); }}
-            >
-              Settings
-            </a>
+            <a href="#rep" className="nav-item" onClick={(e) => { e.preventDefault(); onNavigateToReports(); }}>Reports</a>
+            <a href="#set" className="nav-item" onClick={(e) => { e.preventDefault(); onNavigateToSettings(); }}>Settings</a>
           </div>
         </div>
-        <div className="nav-profile">
-          <span style={{ fontSize: '13px', fontWeight: '500' }}>Maya K.</span>
-          <div className="profile-avatar">MK</div>
-        </div>
+        <NavProfile user={user} onLogout={onLogout} />
       </nav>
+
+      {error && <div className="dash-banner error">{error}</div>}
+
+      {isEmpty && (
+        <div className="dash-banner">
+          <strong>No posts analyzed yet.</strong> Install the ScrollSense browser extension, sign in
+          with this same account, and turn collection on. As you scroll Facebook, your feed will fill
+          in here automatically.
+        </div>
+      )}
 
       {/* Hero Analytics Metrics Banner */}
       <section className="hero-banner">
         <div className="hero-main">
           <div className="live-indicator">
-            <span className="live-dot"></span> Live • Saturday, May 16
+            <span className="live-dot"></span> Live · {todayLabel}
           </div>
-          <h1 className="hero-percentage">72% <span>positive today.</span></h1>
-          <p className="hero-desc">Your feed is leaning bright. Three heavy notes — housing, layoffs, weather — are doing most of the lift.</p>
+          <h1 className="hero-percentage">
+            {o ? o.today_positivity_pct : '—'}% <span>positive</span> <em className="hero-muted">today.</em>
+          </h1>
+          <p className="hero-desc">
+            {isEmpty
+              ? 'Your dashboard is ready and waiting for its first scored posts.'
+              : `Based on ${o?.posts_analyzed ?? 0} posts analyzed over the last ${RANGE_DAYS[range]} days.`}
+          </p>
         </div>
-        
+
         <div className="hero-metrics-grid">
           <div className="metric-tile">
             <div className="tile-label">Posts Analyzed</div>
-            <div className="tile-val">1,284</div>
+            <div className="tile-val">{o ? o.posts_analyzed.toLocaleString() : '—'}</div>
           </div>
           <div className="metric-tile">
             <div className="tile-label">Most Active Hour</div>
-            <div className="tile-val">9-10 PM</div>
+            <div className="tile-val">{o ? o.most_active_hour : '—'}</div>
           </div>
           <div className="metric-tile">
-            <div className="tile-label">Dominant Emotion</div>
-            <div className="tile-val" style={{ color: '#1E4D3A' }}>Hopeful</div>
+            <div className="tile-label">Negative Share</div>
+            <div className="tile-val">{o ? `${o.negative_pct}%` : '—'}</div>
           </div>
           <div className="metric-tile">
             <div className="tile-label">Bright Streak</div>
-            <div className="tile-val">12 days</div>
+            <div className="tile-val">{o ? `${o.bright_streak_days} days` : '—'}</div>
           </div>
         </div>
       </section>
 
       {/* Main Structural Metrics Grid Layout */}
       <main className="dashboard-grid">
-        
+
         {/* Card 1: Gauge Meter */}
         <div className="dash-card col-4">
-          <div className="section-label" style={{ marginBottom: '0' }}>Right Now</div>
-          <div style={{ fontFamily: 'var(--font-serif)', fontSize: '18px' }}>Positivity gauge</div>
-          
+          <div className="card-head">
+            <div>
+              <div className="section-label" style={{ marginBottom: '0' }}>Right Now</div>
+              <div className="card-title-sm">Positivity gauge</div>
+            </div>
+            <span className="live-indicator"><span className="live-dot"></span> Live</span>
+          </div>
+
           <div className="gauge-visual">
-            {/* SVG Circular Dial Backdrop Line */}
-            <svg style={{ position: 'absolute', transform: 'rotate(-90deg)', width: '100%', height: '100%' }}>
-              <circle cx="80" cy="80" r="65" stroke="#E5E2DD" strokeWidth="8" fill="transparent" />
-              <circle cx="80" cy="80" r="65" stroke="#1E4D3A" strokeWidth="8" fill="transparent" strokeDasharray="408" strokeDashoffset="114" />
+            <svg viewBox="0 0 160 160" style={{ position: 'absolute', transform: 'rotate(-90deg)', width: '100%', height: '100%' }}>
+              <circle cx="80" cy="80" r="65" stroke="#E5E2DD" strokeWidth="10" fill="transparent" />
+              <circle cx="80" cy="80" r="65" stroke="#1E4D3A" strokeWidth="10" fill="transparent" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={gaugeOffset} />
             </svg>
             <div className="gauge-center-text">
-              <div className="gauge-num">72</div>
+              <div className="gauge-num">{gaugePct}</div>
               <div className="gauge-total">/ 100</div>
             </div>
           </div>
           <div style={{ textAlign: 'center', fontSize: '12px', color: 'var(--color-text-muted)' }}>
-            Mostly bright <span style={{ color: '#4A9C6D' }}>▲ 6 vs yesterday</span>
+            {gaugePct >= 50 ? 'Mostly bright' : 'Leaning heavy'}{' '}
+            {o && o.delta_vs_yesterday !== 0 && (
+              <span style={{ color: o.delta_vs_yesterday > 0 ? '#1E4D3A' : '#8C4A32' }}>
+                {o.delta_vs_yesterday > 0 ? '▲' : '▼'} {Math.abs(o.delta_vs_yesterday)} vs yesterday
+              </span>
+            )}
           </div>
         </div>
 
         {/* Card 2: Sentiment Timeline Curve */}
         <div className="dash-card col-8">
-          <div className="section-label" style={{ marginBottom: '0' }}>Sentiment Over Time</div>
-          <div style={{ fontFamily: 'var(--font-serif)', fontSize: '18px' }}>Last week</div>
-          <div style={{ height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)', borderBottom: '1px solid #E5E2DD', margin: '1rem 0' }}>
-            {/* SVG Vector Line Approximation Chart */}
-            <svg viewBox="0 0 500 150" style={{ width: '100%', height: '100%' }}>
-              <path d="M0,30 Q125,60 250,45 T500,20" fill="none" stroke="#1E4D3A" strokeWidth="2" />
-              <path d="M0,80 Q125,50 250,70 T500,60" fill="none" stroke="#73706B" strokeWidth="1.5" strokeDasharray="3" />
-              <path d="M0,120 Q125,125 250,135 T500,140" fill="none" stroke="#8C4A32" strokeWidth="2" />
+          <div className="card-head">
+            <div>
+              <div className="section-label" style={{ marginBottom: '0' }}>Sentiment Over Time</div>
+              <div className="card-title-sm">Positive vs negative share</div>
+            </div>
+            <div className="range-toggle">
+              {['7D', '30D', '90D'].map((r) => (
+                <button key={r} className={`range-pill ${range === r ? 'active' : ''}`} onClick={() => setRange(r)}>{r}</button>
+              ))}
+            </div>
+          </div>
+
+          <div className="trend-chart">
+            <div className="trend-yaxis">
+              {[100, 75, 50, 25].map((y) => <span key={y}>{y}</span>)}
+            </div>
+            <svg viewBox="0 0 500 160" preserveAspectRatio="none" className="trend-svg">
+              {[0, 1, 2, 3].map((i) => (
+                <line key={i} x1="0" x2="500" y1={20 + i * 40} y2={20 + i * 40} stroke="#EEE9E3" strokeWidth="1" />
+              ))}
+              {posLine && <path d={posLine} fill="none" stroke="#1E4D3A" strokeWidth="2.5" />}
+              {negLine && <path d={negLine} fill="none" stroke="#8C4A32" strokeWidth="2.5" />}
             </svg>
           </div>
-          <div style={{ display: 'flex', gap: '1.5rem', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
-            <span style={{ color: '#1E4D3A' }}>● Positive</span>
-            <span style={{ color: '#73706B' }}>--- Neutral</span>
-            <span style={{ color: '#8C4A32' }}>● Negative</span>
+          <div className="trend-xaxis">
+            {(data?.timeline || [])
+              .filter((_, i, a) => i % Math.ceil(a.length / 7 || 1) === 0)
+              .map((t) => <span key={t.date}>{shortDate(t.date)}</span>)}
+          </div>
+          <div className="trend-legend">
+            <span><i style={{ background: '#1E4D3A' }}></i> Positive</span>
+            <span><i style={{ background: '#8C4A32' }}></i> Negative</span>
           </div>
         </div>
 
-        {/* Card 3: Content Category Donut Share */}
+        {/* Card 3: Positive / Negative Split Donut */}
         <div className="dash-card col-4">
-          <div className="section-label">Mix</div>
-          <div style={{ fontFamily: 'var(--font-serif)', fontSize: '18px', marginBottom: '1.5rem' }}>What's in your feed</div>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            <div style={{ width: '90px', height: '90px', borderRadius: '50%', border: '16px solid #8C4A32', boxSizing: 'border-box' }} />
-            <div style={{ fontSize: '12px', flex: '1', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <div>Personal posts <span style={{ float: 'right', fontWeight: 'bold' }}>38%</span></div>
-              <div>News & opinion <span style={{ float: 'right', fontWeight: 'bold' }}>24%</span></div>
-              <div>Memes & humor <span style={{ float: 'right', fontWeight: 'bold' }}>19%</span></div>
+          <div className="section-label" style={{ marginBottom: '0' }}>Mix</div>
+          <div className="card-title-sm" style={{ marginBottom: '1.5rem' }}>Positive vs negative</div>
+          <div className="mix-row">
+            <div
+              className="donut"
+              style={{ background: `conic-gradient(#1E4D3A 0% ${gaugePct}%, #8C4A32 ${gaugePct}% 100%)` }}
+            >
+              <div className="donut-hole">
+                <span className="donut-label">POSITIVE</span>
+                <span className="donut-val">{gaugePct}%</span>
+              </div>
+            </div>
+            <div className="mix-legend">
+              <div className="mix-legend-row">
+                <span className="mix-dot" style={{ background: '#1E4D3A' }}></span>
+                <span className="mix-name">Positive</span>
+                <span className="mix-pct">{gaugePct}%</span>
+              </div>
+              <div className="mix-legend-row">
+                <span className="mix-dot" style={{ background: '#8C4A32' }}></span>
+                <span className="mix-name">Negative</span>
+                <span className="mix-pct">{o ? o.negative_pct : 0}%</span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Card 4: Heatmap Bound Constraint Fix Layout */}
-        <div className="dash-card col-8">
-          <div className="section-label" style={{ marginBottom: '0' }}>When it Hits</div>
-          <div style={{ fontFamily: 'var(--font-serif)', fontSize: '18px' }}>Negativity heatmap</div>
-          
-          <div className="heatmap-wrapper">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
-                <div key={day} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', width: '24px', color: 'var(--color-text-muted)' }}>{day}</span>
-                  <div className="heatmap-grid" style={{ flex: '1' }}>
-                    {Array.from({ length: 24 }).map((_, i) => {
-                      const lvls = ['lvl-0', 'lvl-1', 'lvl-2', 'lvl-3', 'lvl-4'];
-                      const randomLvl = lvls[Math.floor(Math.random() * lvls.length)];
-                      return <div key={i} className={`heatmap-block ${randomLvl}`} />;
-                    })}
-                  </div>
+        {/* Card 4: Volume Bar Chart */}
+        <div className="dash-card col-4">
+          <div className="section-label" style={{ marginBottom: '0' }}>Volume</div>
+          <div className="card-title-sm">Posts per day</div>
+          <div className="bar-chart">
+            <div className="bar-yaxis">
+              {[volumeMax, Math.round(volumeMax * 0.75), Math.round(volumeMax * 0.5), Math.round(volumeMax * 0.25), 0].map((y, i) => <span key={i}>{y}</span>)}
+            </div>
+            <div className="bar-area">
+              {(data?.timeline || []).map((b, i) => (
+                <div key={i} className="bar-col" title={`${shortDate(b.date)}: ${b.total}`}>
+                  <div className="bar" style={{ height: `${(b.total / volumeMax) * 100}%`, background: sentimentColor(b.total === 0 ? 'neu' : b.positivity_pct >= 50 ? 'pos' : 'neg') }}></div>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Card 5: Keywords Cloud List */}
+        {/* Card 5: Negativity Heatmap */}
         <div className="dash-card col-4">
-          <div className="section-label">What People are Saying About</div>
-          <div style={{ fontFamily: 'var(--font-serif)', fontSize: '18px', marginBottom: '1rem' }}>Top keywords this week</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', alignContent: 'center', minHeight: '160px' }}>
-            <span style={{ fontSize: '22px', color: '#1E4D3A', fontFamily: 'var(--font-serif)' }}>climate</span>
-            <span style={{ fontSize: '18px', color: '#8C4A32' }}>layoffs</span>
-            <span style={{ fontSize: '14px', color: 'var(--color-text-muted)' }}>startup</span>
-            <span style={{ fontSize: '20px', color: '#1E4D3A', fontStyle: 'italic' }}>graduation</span>
-            <span style={{ fontSize: '16px', color: '#8C4A32' }}>inflation</span>
+          <div className="card-head">
+            <div>
+              <div className="section-label" style={{ marginBottom: '0' }}>When it Hits</div>
+              <div className="card-title-sm">Negativity heatmap · 30d</div>
+            </div>
+            <span className="heat-axis-note">← Day</span>
+          </div>
+          <div className="heat-hour-row">
+            <span className="heat-hour-lead">Hour →</span>
+          </div>
+          <div className="heatmap-block-wrap">
+            {(data?.heatmap || []).map((row, di) => (
+              <div key={di} className="heat-row">
+                <span className="heat-day">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][di]}</span>
+                <div className="heatmap-grid">
+                  {row.map((lvl, hi) => <div key={hi} className={`heatmap-block lvl-${lvl}`} />)}
+                </div>
+              </div>
+            ))}
+            <div className="heat-hourlabels">
+              {['12a', '3a', '6a', '9a', '12p', '3p', '6p'].map((h) => <span key={h}>{h}</span>)}
+            </div>
+          </div>
+          <div className="heat-legend">
+            <span>Calm</span>
+            <div className="heat-legend-bar"></div>
+            <span>Heavy</span>
           </div>
         </div>
 
-        {/* Card 6: Live Feed Panel List */}
+        {/* Card 6: Keywords Cloud */}
+        <div className="dash-card col-4">
+          <div className="section-label" style={{ marginBottom: '0' }}>What People are Saying About</div>
+          <div className="card-title-sm">Top keywords</div>
+          <div className="kw-sublabel">size = frequency · color = sentiment</div>
+          <div className="kw-cloud">
+            {(data?.keywords || []).length === 0 && (
+              <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>No keywords yet.</span>
+            )}
+            {(data?.keywords || []).map((k) => (
+              <span
+                key={k.word}
+                className="kw"
+                style={{ fontSize: `${13 + Math.round((k.count / kwMax) * 17)}px`, color: sentimentColor(k.sentiment) }}
+              >
+                {k.word}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Card 7: Live Feed Panel List */}
         <div className="dash-card col-8">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div className="card-head" style={{ marginBottom: '0.5rem' }}>
             <div>
               <div className="section-label" style={{ marginBottom: '0' }}>Last 10 Posts</div>
-              <div style={{ fontFamily: 'var(--font-serif)', fontSize: '18px' }}>Recent feed</div>
+              <div className="card-title-sm">Recent feed</div>
             </div>
-            <button style={{ background: 'none', border: 'none', fontSize: '11px', fontFamily: 'var(--font-mono)', textDecoration: 'underline', cursor: 'pointer' }}>View all →</button>
           </div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {feeds.map((item, index) => (
-              <div key={index} className="feed-item">
+
+          <div>
+            {(data?.posts || []).length === 0 && (
+              <div style={{ fontSize: '13px', color: 'var(--color-text-muted)', padding: '1rem 0' }}>
+                Scored posts from your feed will appear here.
+              </div>
+            )}
+            {(data?.posts || []).map((item) => (
+              <div key={item.id} className="feed-item" style={{ borderLeft: `3px solid ${sentimentColor(item.sentiment)}` }}>
+                <p className="feed-text">{item.text.length > 220 ? item.text.slice(0, 220) + '…' : item.text}</p>
                 <div className="feed-header-info">
                   <div>
-                    <span style={{ 
-                      color: item.type === 'pos' ? '#1E4D3A' : item.type === 'neg' ? '#8C4A32' : 'var(--color-text-muted)',
-                      fontWeight: 'bold', marginRight: '6px'
-                    }}>● {item.type === 'pos' ? 'Positive' : item.type === 'neg' ? 'Negative' : 'Neutral'}</span>
-                    <span>{item.conf}</span>
+                    <span style={{ color: sentimentColor(item.sentiment), fontWeight: '600', marginRight: '8px' }}>● {sentimentLabel(item.sentiment)}</span>
+                    <span>{Math.round((item.confidence || 0) * 100)}% confidence</span>
+                    <span style={{ marginLeft: '8px' }}>· {relativeTime(item.created_at)}</span>
                   </div>
-                  <div>{item.time} <span style={{ background: '#E5E2DD', padding: '2px 4px', borderRadius: '3px', marginLeft: '6px', fontSize: '9px' }}>{item.cat}</span></div>
                 </div>
-                <p className="feed-text">{item.text}</p>
               </div>
             ))}
           </div>
         </div>
 
       </main>
+
+      <footer className="dash-model-footer">
+        Model: scrollsense-nlp · binary sentiment (positive / negative){loading ? ' · loading…' : ''}
+      </footer>
     </div>
   );
 };

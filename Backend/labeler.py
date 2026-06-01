@@ -1,33 +1,19 @@
-import os
 import streamlit as st
-from supabase import create_client, Client
 from dotenv import load_dotenv
+
+import db
 
 load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error("Missing Supabase credentials. Add SUPABASE_URL and SUPABASE_KEY to your .env file.")
-    st.stop()
-
-@st.cache_resource
-def get_supabase() -> Client:
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
-
-supabase = get_supabase()
+db.init_db()
 
 
 def load_posts(show_all: bool) -> list[dict]:
-    query = supabase.table("posts").select("id, text, label").order("id")
-    if not show_all:
-        query = query.is_("label", "null")
-    return query.execute().data
+    return db.list_posts(only_unlabeled=not show_all)
 
 
 def save_label(post_id: str, label: int):
-    supabase.table("posts").update({"label": label}).eq("id", post_id).execute()
+    db.update_label(post_id, label)
 
 
 def init_state(posts: list[dict]):
@@ -96,8 +82,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("**Labels**")
     st.markdown("🟢 **Positive** → `1`")
-    st.markdown("🟡 **Neutral** → `0`")
-    st.markdown("🔴 **Negative** → `-1`")
+    st.markdown("🔴 **Negative** → `0`")
 
 # ── Load data ────────────────────────────────────────────────────────────────
 if "posts" not in st.session_state or show_all != st.session_state.get("_show_all"):
@@ -133,7 +118,7 @@ st.progress(progress, text=f"Post {idx + 1} of {total}  •  {st.session_state.t
 # ── Post display ─────────────────────────────────────────────────────────────
 current_label = post.get("label")
 if current_label is not None:
-    badge_map = {1: ("badge-pos", "Positive"), 0: ("badge-neu", "Neutral"), -1: ("badge-neg", "Negative")}
+    badge_map = {1: ("badge-pos", "Positive"), 0: ("badge-neg", "Negative")}
     cls, name = badge_map.get(current_label, ("badge-neu", str(current_label)))
     badge_html = f'<span class="label-badge {cls}">Already labeled: {name} ({current_label})</span>'
 else:
@@ -148,7 +133,7 @@ st.markdown(
 st.markdown("")
 
 # ── Label buttons ─────────────────────────────────────────────────────────────
-col1, col2, col3, col_skip = st.columns([2, 2, 2, 1])
+col1, col2, col_skip = st.columns([3, 3, 1])
 
 def apply_label(label: int):
     save_label(post["id"], label)
@@ -162,13 +147,8 @@ with col1:
         st.rerun()
 
 with col2:
-    if st.button("🟡 Neutral", use_container_width=True):
-        apply_label(0)
-        st.rerun()
-
-with col3:
     if st.button("🔴 Negative", use_container_width=True):
-        apply_label(-1)
+        apply_label(0)
         st.rerun()
 
 with col_skip:
@@ -190,14 +170,14 @@ with nav_col2:
 
 # ── Stats expander ────────────────────────────────────────────────────────────
 with st.expander("📊 Label distribution (all posts in DB)"):
-    all_posts = supabase.table("posts").select("label").execute().data
-    counts = {1: 0, 0: 0, -1: 0, None: 0}
+    all_posts = db.label_distribution()
+    counts = {1: 0, 0: 0, None: 0}
     for p in all_posts:
         lbl = p.get("label")
         counts[lbl if lbl in counts else None] += 1
     total_db = len(all_posts)
     st.markdown(f"**Total posts:** {total_db}")
-    st.markdown(f"🟢 Positive: **{counts[1]}**  |  🟡 Neutral: **{counts[0]}**  |  🔴 Negative: **{counts[-1]}**  |  ⬜ Unlabeled: **{counts[None]}**")
+    st.markdown(f"🟢 Positive: **{counts[1]}**  |  🔴 Negative: **{counts[0]}**  |  ⬜ Unlabeled: **{counts[None]}**")
     if total_db > 0:
         labeled_pct = round(100 * (total_db - counts[None]) / total_db, 1)
         st.progress((total_db - counts[None]) / total_db, text=f"{labeled_pct}% labeled")

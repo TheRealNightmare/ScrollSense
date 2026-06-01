@@ -1,37 +1,68 @@
-const SUPABASE_URL = CONFIG.SUPABASE_URL;
-const SUPABASE_ANON_KEY = CONFIG.SUPABASE_ANON_KEY; 
+const BACKEND_URL = CONFIG.BACKEND_URL;
+
+// ── Server-side collection flag helpers ──────────────────────────────────────
+// The collection switch is stored per-user in the backend, so it stays in sync
+// with the web app's Settings page. chrome.storage keeps a local cache that the
+// content/background scripts read on every scroll.
+async function fetchCollectionFromServer(token) {
+  const res = await fetch(`${BACKEND_URL}/settings/collection`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("Could not read collection setting");
+  const data = await res.json();
+  return !!data.enabled;
+}
+
+async function pushCollectionToServer(token, enabled) {
+  await fetch(`${BACKEND_URL}/settings/collection`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ enabled }),
+  });
+}
 
 document.addEventListener("DOMContentLoaded", () => {
   const authView = document.getElementById("auth-view");
   const dashboardView = document.getElementById("dashboard-view");
   const errorMsg = document.getElementById("error-msg");
-  
-  // New UI elements for sliding switch
   const toggleSwitch = document.getElementById("toggle-switch");
-  
   const submitBtn = document.getElementById("submit-btn");
   const switchModeBtn = document.getElementById("switch-mode-btn");
   const authSubtitle = document.getElementById("auth-subtitle");
 
   let isLoginMode = true;
 
-// --- Initialization ---
-  chrome.storage.local.get(["supabaseToken", "scrapingEnabled", "userEmail"], (result) => {
-    if (result.supabaseToken) {
-      // Set the email text if it exists
+  // --- Initialization ---
+  chrome.storage.local.get(["authToken", "scrapingEnabled", "userEmail"], (result) => {
+    if (result.authToken) {
       if (result.userEmail) {
         document.getElementById("user-email-display").innerText = "Signed in as: " + result.userEmail;
       }
       showDashboard();
+
+      // Sync the toggle from the server so the extension and web app agree.
+      toggleSwitch.checked = result.scrapingEnabled || false;
+      fetchCollectionFromServer(result.authToken)
+        .then((enabled) => {
+          toggleSwitch.checked = enabled;
+          chrome.storage.local.set({ scrapingEnabled: enabled });
+        })
+        .catch(() => { /* offline — keep local cache */ });
+    } else {
+      toggleSwitch.checked = result.scrapingEnabled || false;
     }
-    
-    toggleSwitch.checked = result.scrapingEnabled || false;
   });
-  // --- Toggle Switch Listener (The Slider) ---
+
+  // --- Toggle Switch Listener (writes to server + local cache) ---
   toggleSwitch.addEventListener("change", () => {
     const isEnabled = toggleSwitch.checked;
-    chrome.storage.local.set({ scrapingEnabled: isEnabled }, () => {
-      console.log("Collection is now:", isEnabled);
+    chrome.storage.local.set({ scrapingEnabled: isEnabled });
+    chrome.storage.local.get(["authToken"], (result) => {
+      if (result.authToken) {
+        pushCollectionToServer(result.authToken, isEnabled).catch(() => {
+          console.warn("[ScrollSense] Could not save collection setting to server.");
+        });
+      }
     });
   });
 
@@ -55,29 +86,33 @@ document.addEventListener("DOMContentLoaded", () => {
     const email = document.getElementById("email").value;
     const password = document.getElementById("password").value;
     if (!email || !password) return (errorMsg.innerText = "Please enter an email and password.");
-    
+
     errorMsg.innerText = isLoginMode ? "Logging in..." : "Creating account...";
-    const endpoint = isLoginMode ? `${SUPABASE_URL}/auth/v1/token?grant_type=password` : `${SUPABASE_URL}/auth/v1/signup`;
+    const endpoint = isLoginMode ? `${BACKEND_URL}/auth/login` : `${BACKEND_URL}/auth/signup`;
 
     try {
       const response = await fetch(endpoint, {
         method: "POST",
-        headers: { "apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error_description || data.msg || "Authentication failed");
+      if (!response.ok) throw new Error(data.detail || "Authentication failed");
 
-      // Success! Save token, toggle state, AND the email
-      chrome.storage.local.set({ 
-        supabaseToken: data.access_token, 
-        scrapingEnabled: true,
-        userEmail: email // <--- ADD THIS LINE
-      }, () => {
-        document.getElementById("user-email-display").innerText = "Signed in as: " + email;
-        toggleSwitch.checked = true;
-        showDashboard();
-      });
+      // Read the user's current server-side collection preference (defaults to on).
+      let enabled = true;
+      try {
+        enabled = await fetchCollectionFromServer(data.access_token);
+      } catch { /* offline — fall back to on */ }
+
+      chrome.storage.local.set(
+        { authToken: data.access_token, scrapingEnabled: enabled, userEmail: email },
+        () => {
+          document.getElementById("user-email-display").innerText = "Signed in as: " + email;
+          toggleSwitch.checked = enabled;
+          showDashboard();
+        }
+      );
     } catch (err) {
       errorMsg.innerText = err.message;
     }
@@ -85,7 +120,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- Logout ---
   document.getElementById("logout-btn").addEventListener("click", () => {
-    chrome.storage.local.remove(["supabaseToken", "scrapingEnabled"], () => {
+    chrome.storage.local.remove(["authToken", "scrapingEnabled", "userEmail"], () => {
       authView.classList.remove("hidden");
       dashboardView.classList.add("hidden");
       document.getElementById("email").value = "";

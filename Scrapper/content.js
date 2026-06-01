@@ -92,11 +92,11 @@ const observer = new MutationObserver(() => {
   window.scrollSenseTimer = setTimeout(() => {
     
     // 3. ONLY check storage once the scrolling has stopped
-    chrome.storage.local.get(['supabaseToken', 'scrapingEnabled'], function(result) {
+    chrome.storage.local.get(['authToken', 'scrapingEnabled'], function(result) {
       // If logged out or switched off, abort.
-      if (!result.supabaseToken || !result.scrapingEnabled) {
+      if (!result.authToken || !result.scrapingEnabled) {
         log("Scraping is paused or user is logged out.");
-        return; 
+        return;
       }
       
       // If we are good to go, run the heavy extractor function
