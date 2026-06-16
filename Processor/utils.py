@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 
 import numpy as np
 import torch
-from sklearn.metrics import accuracy_score, f1_score
 
 from config import SEED
 
@@ -26,6 +25,7 @@ def set_seed(seed: int = SEED):
 
 
 def compute_metrics(preds: list, labels: list) -> dict:
+    from sklearn.metrics import accuracy_score, f1_score
     return {
         "accuracy": accuracy_score(labels, preds),
         "macro_f1": f1_score(labels, preds, average="macro", zero_division=0),
